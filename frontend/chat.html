@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" type="text/css" href="./static/css/chat.css">
+  <title>Chat App</title>
+</head>
+
+<body>
+  <div class="calculator">
+    <div id="chatDisplay" class="display"></div>
+    <div class="input-area">
+      <input id="messageInput" type="text" placeholder="Type a message...">
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const chatDisplay = document.getElementById('chatDisplay');
+    const messageInput = document.getElementById('messageInput');
+
+    let lastMessageId = 0;
+
+    async function fetchMessages() {
+      try {
+        const response = await fetch('/getMsgs');
+        const data = await response.json();
+        const messages = data.posts;
+
+        messages
+          .filter(m => m.id > lastMessageId)
+          .forEach(m => {
+            const div = document.createElement('div');
+            if (m.author === 'J') {
+              div.innerHTML = `<b style="color: #8A0082">${m.author}:</b> ${m.message}`;
+            } else if (m.author === 'A') {
+              div.innerHTML = `<b style="color: gold">${m.author}:</b> ${m.message}`;
+            } else {
+              div.innerHTML = `<b>${m.author}:</b> ${m.message}`;
+            }
+            chatDisplay.appendChild(div);
+
+            lastMessageId = Math.max(lastMessageId, m.id);
+          });
+
+        chatDisplay.scrollTop = chatDisplay.scrollHeight;
+      } catch (err) {
+        console.error('Failed to fetch messages', err);
+      }
+    }
+
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      const isIphone = /iPhone/i.test(navigator.userAgent);
+      const user = isIphone ? 'J' : 'A';
+
+      if (!text) return;
+      try {
+        await fetch('/sendMsg', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user, text })
+        });
+        messageInput.value = '';
+        fetchMessages();
+      } catch (err) {
+        console.error('Failed to send message', err);
+      }
+    }
+
+    // Poll messages every 2 seconds
+    setInterval(fetchMessages, 2000);
+    fetchMessages();
+
+    let inactivityTimer;
+
+    function resetTimer() {
+      clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        window.location.href = '/';
+      }, 30000); // 30 seconds
+    }
+
+    // reset on any interaction
+    ['mousemove', 'keydown', 'scroll', 'touchstart'].forEach(evt => {
+      document.addEventListener(evt, resetTimer);
+    });
+
+    resetTimer(); // start timer
+
+  </script>
+</body>
+
+</html>

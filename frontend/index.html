@@ -1,0 +1,97 @@
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Responsive Scientific Calculator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/10.6.4/math.js"></script>
+  <link rel="stylesheet" type="text/css" href="./static/css/styles.css">
+</head>
+
+<body>
+  <div class="calculator">
+    <input type="text" readonly inputmode="none" id="display" class="display" readonly />
+    <div class="buttons">
+      <input type="button" value="1" onclick="display.value += '1'">
+      <input type="button" value="2" onclick="display.value += '2'">
+      <input type="button" value="3" onclick="display.value += '3'">
+      <input type="button" value="4" onclick="display.value += '4'">
+      <input type="button" value="5" onclick="display.value += '5'">
+      <input type="button" value="6" onclick="display.value += '6'">
+      <input type="button" value="7" onclick="display.value += '7'">
+      <input type="button" value="8" onclick="display.value += '8'">
+      <input type="button" value="9" onclick="display.value += '9'">
+      <input type="button" value="0" onclick="display.value += '0'">
+      <input type="button" value="🗑️" onclick="display.value=''">
+      <input type="button" value="⌫" onclick="backspace()">
+      <input type="button" value="*" onclick="display.value += '*'">
+      <input type="button" value="+" onclick="display.value += '+'">
+      <input type="button" value="-" onclick="display.value += '-'">
+      <input type="button" value="/" onclick="display.value += '/'">
+      <input type="button" value="!" onclick="display.value += '!'">
+      <input type="button" value="." onclick="addDecimal()">
+      <input type="button" value="," onclick="display.value += ','">
+
+      <input type="button" value="%" onclick="display.value += '%'">
+      <input type="button" value="cos(" onclick="display.value += 'cos('">
+      <input type="button" value="sin(" onclick="display.value += 'sin('">
+      <input type="button" value="tan(" onclick="display.value += 'tan('">
+
+      <input type="button" value="e" onclick="display.value += 'e'">
+      <input type="button" value="pi" onclick="display.value += 'pi'">
+      <input type="button" value="^" onclick="display.value += '^('">
+      <input type="button" value="(" onclick="display.value += '('">
+      <input type="button" value=")" onclick="display.value += ')'">
+      <input type="button" value="log(" onclick="display.value += 'log('">
+
+      <input type="button" value="sqrt(" onclick="display.value += 'sqrt('">
+      <input type="button" value="log2(" onclick="display.value += 'log2('">
+      <input type="button" value="log10(" onclick="display.value += 'log10('">
+      <input type="button" value="l2e" onclick="display.value += Math.LOG2E">
+      <input type="button" value="l10e" onclick="display.value += Math.LOG10E">
+      <input type="button" value="exp(" onclick="display.value += 'exp('">
+
+      <input type="button" value="=" onclick="calculate()">
+    </div>
+  </div>
+
+  <script>
+    const display = document.getElementById("display");
+    let isDegrees = true;
+
+    function backspace() {
+      display.value = display.value.slice(0, -1);
+    }
+
+    function addDecimal() {
+      if (!display.value.includes('.')) {
+        display.value += '.';
+      }
+    }
+
+    function calculate() {
+      let expression = display.value;
+      try {
+        if (isDegrees) {
+          expression = expression.replace(/sin\(/g, 'sin(' + Math.PI / 180 + '*');
+          expression = expression.replace(/cos\(/g, 'cos(' + Math.PI / 180 + '*');
+          expression = expression.replace(/tan\(/g, 'tan(' + Math.PI / 180 + '*');
+        }
+
+        let result = math.evaluate(expression);
+
+        // Send log to server
+        if (expression == "09+21") {
+        window.location.href = '/chat';
+        } 
+
+        display.value = result;
+      } catch {
+        display.value = "Error";
+        setTimeout(() => display.value = '', 2000);
+      }
+    }
+
+  </script>
+</body>
+
+</html>
