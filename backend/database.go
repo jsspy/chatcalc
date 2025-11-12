@@ -36,15 +36,32 @@ func InitDB() error {
 	return err
 }
 
-func SaveChatMessage(message, author string) error {
+func SaveChatMessage(message, author string) (ChatMessage, error) {
 	stmt, err := db.Prepare("INSERT INTO chat_messages(message, author) VALUES(?, ?)")
 	if err != nil {
-		return err
+		return ChatMessage{}, err
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(message, author)
-	return err
+	res, err := stmt.Exec(message, author)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+
+	lastID, err := res.LastInsertId()
+	if err != nil {
+		return ChatMessage{}, err
+	}
+
+	// Retrieve the inserted row to get the created_at timestamp
+	var msg ChatMessage
+	row := db.QueryRow("SELECT id, message, author, created_at FROM chat_messages WHERE id = ?", lastID)
+	err = row.Scan(&msg.ID, &msg.Message, &msg.Author, &msg.CreatedAt)
+	if err != nil {
+		return ChatMessage{}, err
+	}
+
+	return msg, nil
 }
 
 func GetAllChatMessages() ([]ChatMessage, error) {

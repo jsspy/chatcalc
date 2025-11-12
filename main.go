@@ -13,10 +13,11 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", handlers.HomeHandler)
-	mux.HandleFunc("POST /logExp", handlers.LogHandler)
-	mux.HandleFunc("GET /chat", handlers.ChatHandler)
-	mux.HandleFunc("POST /sendMsg", handlers.ChatPostHandler)
-	mux.HandleFunc("GET /getMsgs", handlers.GetMsgsHandler)
+	mux.HandleFunc("/logExp", handlers.LogHandler)
+	mux.HandleFunc("/chat", handlers.ChatHandler)
+	mux.HandleFunc("/sendMsg", handlers.ChatPostHandler)
+	mux.HandleFunc("/getMsgs", handlers.GetMsgsHandler)
+	mux.HandleFunc("/ws", handlers.WsHandler)
 
 	mux.HandleFunc("GET /static/", handlers.StaticHandler)
 

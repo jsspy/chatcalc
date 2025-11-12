@@ -70,7 +70,7 @@ func ChatPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := SaveChatMessage(postData.Message, postData.Author); err != nil {
+	if _, err := SaveChatMessage(postData.Message, postData.Author); err != nil {
 		log.Printf("error saving message: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
