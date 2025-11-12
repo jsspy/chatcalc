@@ -26,6 +26,8 @@
 
     ws.addEventListener('open', () => {
       console.log('WebSocket connected');
+      // tell server we're ready to receive history to avoid a race
+      ws.send(JSON.stringify({ type: 'ready' }));
     });
 
     ws.addEventListener('message', (ev) => {

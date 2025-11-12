@@ -11,8 +11,8 @@ import (
 
 // Message envelope used over websocket
 type wsEnvelope struct {
-	Type  string      `json:"type"`
-	Post  *ChatMessage `json:"post,omitempty"`
+	Type  string        `json:"type"`
+	Post  *ChatMessage  `json:"post,omitempty"`
 	Posts []ChatMessage `json:"posts,omitempty"`
 }
 
@@ -79,14 +79,6 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 	// Register connection
 	hub.register <- conn
 
-	// Send history on connect
-	msgs, err := GetAllChatMessages()
-	if err == nil {
-		env := wsEnvelope{Type: "history", Posts: msgs}
-		b, _ := json.Marshal(env)
-		conn.WriteMessage(websocket.TextMessage, b)
-	}
-
 	// Start reader loop for this connection (blocking until error)
 	for {
 		_, data, err := conn.ReadMessage()
@@ -96,13 +88,39 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Expect incoming JSON: { user: string, text: string }
+		// Expect incoming JSON. It can be either:
+		// { "type": "ready" }  => client is ready to receive history
+		// OR { "user": "A", "text": "hello" } => chat message
 		var incoming struct {
+			Type string `json:"type"`
 			User string `json:"user"`
 			Text string `json:"text"`
 		}
 		if err := json.Unmarshal(data, &incoming); err != nil {
 			log.Printf("invalid ws message: %v", err)
+			continue
+		}
+
+		// If client signals ready, send history to only this connection
+		if incoming.Type == "ready" {
+			msgs, err := GetAllChatMessages()
+			if err != nil {
+				log.Printf("error fetching history for ws: %v", err)
+				continue
+			}
+			env := wsEnvelope{Type: "history", Posts: msgs}
+			b, err := json.Marshal(env)
+			if err != nil {
+				log.Printf("failed to marshal history envelope: %v", err)
+				continue
+			}
+			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
+				log.Printf("failed to write history to conn: %v", err)
+				hub.unregister <- conn
+				return
+			}
+			log.Printf("sent history (%d messages) to client %v", len(msgs), conn.RemoteAddr())
 			continue
 		}
 
