@@ -13,13 +13,15 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", handlers.HomeHandler)
-	mux.HandleFunc("/logExp", handlers.LogHandler)
 	mux.HandleFunc("/chat", handlers.ChatHandler)
-	mux.HandleFunc("/sendMsg", handlers.ChatPostHandler)
-	mux.HandleFunc("/getMsgs", handlers.GetMsgsHandler)
 	mux.HandleFunc("/ws", handlers.WsHandler)
+	mux.HandleFunc("/api/upload-image", handlers.UploadImageHandler)
 
-	mux.HandleFunc("GET /static/", handlers.StaticHandler)
+	// Serve frontend static files
+	mux.HandleFunc("/static/", handlers.StaticHandler)
+
+	// Serve uploaded files from ./uploads at /uploads/
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
 
 	fmt.Println("Started http://localhost:8080")
 	http.ListenAndServe(":8080", mux)
