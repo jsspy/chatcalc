@@ -11,10 +11,30 @@ body {
 
 /* Prevent text size adjustments and allow manipulation touch action
    Also ensure inputs don't trigger iOS zoom by using >=16px font-size */
+/* Use border-box sizing so padding does not increase overall viewport size */
+html {
+    box-sizing: border-box;
+}
+*, *:before, *:after {
+    box-sizing: inherit;
+}
+
 html, body {
     -webkit-text-size-adjust: 100%;
     -ms-text-size-adjust: 100%;
     touch-action: manipulation;
+}
+
+/* Add spacing (margins) on sides, top and bottom */
+body {
+    margin: 0;
+    padding: 16px; /* creates visible space around the app on all sides */
+    font-family: Arial, sans-serif;
+    background: #282a36;
+    color: #f8f8f2;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
 }
 
 input, textarea, button {
@@ -36,6 +56,18 @@ input, textarea, button {
     max-width: 70%;
     word-break: break-word;
     width: fit-content;
+}
+
+.msg .msg-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.msg .time {
+    font-size: 11px;
+    opacity: 0.7;
+    color: #bfbfbf;
 }
 
 .A {

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,6 +19,7 @@ type Message struct {
 	Text      string `json:"text"`
 	FileURL   string `json:"fileUrl"`
 	ReplyToID string `json:"replyToId"`
+	CreatedAt string `json:"createdAt"`
 }
 
 var clients = make(map[*websocket.Conn]string) // conn → username (A or J)
@@ -75,13 +77,16 @@ func HandleWS(w http.ResponseWriter, r *http.Request) { // Broadcast to all clie
 			msg.ID = generateID()
 		}
 
+		// Set CreatedAt timestamp so clients receive it immediately
+		msg.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+
 		// Save to SQLite
 		if err := SaveMessage(&msg); err != nil {
 			log.Println("Error saving message to database:", err)
 			continue
 		}
 
-		// Re-marshal with the ID for broadcasting
+		// Re-marshal with the ID and timestamp for broadcasting
 		data, _ = json.Marshal(msg)
 
 		// Forward message to both users

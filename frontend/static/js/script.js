@@ -66,6 +66,17 @@ window.onload = () => {
     render(msg);
   };
 
+  function formatDate(iso) {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso);
+      // Short date + time
+      return d.toLocaleString();
+    } catch (e) {
+      return iso;
+    }
+  }
+
   function render(m) {
     const div = document.createElement("div");
     div.className = `msg ${m.from}`;
@@ -74,6 +85,7 @@ window.onload = () => {
     messageMap[m.id] = { text: m.text || "(file)", fileUrl: m.fileUrl };
 
     let html = "";
+    const ts = m.createdAt ? formatDate(m.createdAt) : "";
     if (m.replyToId) {
       const repliedTo = messageMap[m.replyToId];
       if (repliedTo && repliedTo.fileUrl) {
@@ -82,7 +94,7 @@ window.onload = () => {
         html += `<small style='opacity:.6'>Replying to: ${repliedTo?.text || m.replyToId}</small><br>`;
       }
     }
-    if (m.text) html += `<strong style='font-weight:600;'>${m.from}:</strong> ${m.text}`;
+    if (m.text) html += `<div class="msg-header"><strong style='font-weight:600;'>${m.from}:</strong> <span class="time">${ts}</span></div> ${m.text}`;
     if (m.fileUrl) html += `<br><img src='${m.fileUrl}' style='max-width:200px;border-radius:6px;'>`;
 
     div.innerHTML = html;

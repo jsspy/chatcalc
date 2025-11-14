@@ -71,7 +71,7 @@ func GetMessages() ([]Message, error) {
 	}
 
 	selectSQL := `
-	SELECT id, from_user, text, file_url, reply_to_id
+	SELECT id, from_user, text, file_url, reply_to_id, created_at
 	FROM messages
 	ORDER BY created_at ASC;
 	`
@@ -86,10 +86,14 @@ func GetMessages() ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var msg Message
-		err := rows.Scan(&msg.ID, &msg.From, &msg.Text, &msg.FileURL, &msg.ReplyToID)
+		var createdAt sql.NullString
+		err := rows.Scan(&msg.ID, &msg.From, &msg.Text, &msg.FileURL, &msg.ReplyToID, &createdAt)
 		if err != nil {
 			log.Printf("Error scanning message: %v\n", err)
 			continue
+		}
+		if createdAt.Valid {
+			msg.CreatedAt = createdAt.String
 		}
 		messages = append(messages, msg)
 	}
