@@ -11,6 +11,17 @@ window.onload = () => {
     return;
   }
 
+  // Send message on Enter key
+  messageInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // call the global send function
+      if (typeof window.sendMessage === 'function') {
+        window.sendMessage();
+      }
+    }
+  });
+
   // Get WebSocket URL from current location
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -77,6 +88,16 @@ window.onload = () => {
     }
   }
 
+  // Determine file type by URL/extension
+  function getFileType(url) {
+    if (!url) return 'other';
+    const u = url.split('?')[0].toLowerCase();
+    if (u.match(/\.(png|jpe?g|gif|webp|bmp)$/)) return 'image';
+    if (u.match(/\.(mp4|webm|ogg|mov|mkv)$/)) return 'video';
+    if (u.match(/\.(mp3|wav|m4a|aac|ogg)$/)) return 'audio';
+    return 'other';
+  }
+
   function render(m) {
     const div = document.createElement("div");
     div.className = `msg ${m.from}`;
@@ -89,13 +110,33 @@ window.onload = () => {
     if (m.replyToId) {
       const repliedTo = messageMap[m.replyToId];
       if (repliedTo && repliedTo.fileUrl) {
-        html += `<small style='opacity:.6;'>Replying to image:</small><br><img src='${repliedTo.fileUrl}' style='max-width:100px;max-height:100px;border-radius:4px;margin-bottom:8px;'>`;
+        const t = getFileType(repliedTo.fileUrl);
+        if (t === 'image') {
+          html += `<small style='opacity:.6;'>Replying to image:</small><br><img src='${repliedTo.fileUrl}' style='max-width:100px;max-height:100px;border-radius:4px;margin-bottom:8px;'>`;
+        } else if (t === 'video') {
+          html += `<small style='opacity:.6;'>Replying to video:</small><br><video muted playsinline preload='metadata' style='max-width:120px;max-height:80px;border-radius:4px;margin-bottom:8px;' src='${repliedTo.fileUrl}'></video>`;
+        } else if (t === 'audio') {
+          html += `<small style='opacity:.6;'>Replying to audio:</small><br><audio controls src='${repliedTo.fileUrl}' style='max-width:150px;margin-bottom:8px;'></audio>`;
+        } else {
+          html += `<small style='opacity:.6'>Replying to file</small><br>`;
+        }
       } else {
         html += `<small style='opacity:.6'>Replying to: ${repliedTo?.text || m.replyToId}</small><br>`;
       }
     }
     if (m.text) html += `<div class="msg-header"><strong style='font-weight:600;'>${m.from}:</strong> <span class="time">${ts}</span></div> ${m.text}`;
-    if (m.fileUrl) html += `<br><img src='${m.fileUrl}' style='max-width:200px;border-radius:6px;'>`;
+    if (m.fileUrl) {
+      const ft = getFileType(m.fileUrl);
+      if (ft === 'image') {
+        html += `<br><img src='${m.fileUrl}' style='max-width:200px;border-radius:6px;'>`;
+      } else if (ft === 'video') {
+        html += `<br><video controls playsinline preload='metadata' style='max-width:320px;border-radius:6px;' src='${m.fileUrl}'></video>`;
+      } else if (ft === 'audio') {
+        html += `<br><audio controls src='${m.fileUrl}' style='width:100%;max-width:320px;'></audio>`;
+      } else {
+        html += `<br><a href='${m.fileUrl}' target='_blank' rel='noopener'>Download file</a>`;
+      }
+    }
 
     div.innerHTML = html;
     div.onclick = () => startReply(m.id, m.text, m.fileUrl);
@@ -110,7 +151,16 @@ window.onload = () => {
     replyBox.style.display = "block";
     
     if (fileUrl) {
-      replyText.innerHTML = `Replying to image:<br><img src='${fileUrl}' style='max-width:100px;max-height:100px;border-radius:4px;'>`;
+      const t = getFileType(fileUrl);
+      if (t === 'image') {
+        replyText.innerHTML = `Replying to image:<br><img src='${fileUrl}' style='max-width:100px;max-height:100px;border-radius:4px;'>`;
+      } else if (t === 'video') {
+        replyText.innerHTML = `Replying to video:<br><video muted playsinline preload='metadata' style='max-width:180px;max-height:120px;border-radius:4px;' src='${fileUrl}'></video>`;
+      } else if (t === 'audio') {
+        replyText.innerHTML = `Replying to audio:<br><audio controls src='${fileUrl}' style='max-width:180px;'></audio>`;
+      } else {
+        replyText.innerText = "Replying to: " + replyTo;
+      }
     } else {
       replyText.innerText = "Replying to: " + replyTo;
     }
@@ -161,7 +211,16 @@ window.onload = () => {
 
     pendingFile = data.url;
     
-    // Show preview in input box area
-    messagePreview.innerHTML = `<img src='${pendingFile}' style='max-width:150px;max-height:150px;border-radius:6px;'>`;
+    // Show preview in input box area (respect file type)
+    const ptype = getFileType(pendingFile);
+    if (ptype === 'image') {
+      messagePreview.innerHTML = `<img src='${pendingFile}' style='max-width:150px;max-height:150px;border-radius:6px;'>`;
+    } else if (ptype === 'video') {
+      messagePreview.innerHTML = `<video controls playsinline preload='metadata' style='max-width:200px;max-height:150px;border-radius:6px;' src='${pendingFile}'></video>`;
+    } else if (ptype === 'audio') {
+      messagePreview.innerHTML = `<audio controls src='${pendingFile}' style='max-width:200px;'></audio>`;
+    } else {
+      messagePreview.innerHTML = `<a href='${pendingFile}' target='_blank' rel='noopener'>Uploaded file</a>`;
+    }
   };
 };

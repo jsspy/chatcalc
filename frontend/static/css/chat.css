@@ -55,7 +55,20 @@ input, textarea, button {
     border-radius: 8px;
     max-width: 70%;
     word-break: break-word;
-    width: fit-content;
+}
+
+/* Ensure media elements stay inside the message bubble */
+.msg img,
+.msg video,
+.msg audio {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+.msg video {
+    max-height: 360px;
+    object-fit: contain;
 }
 
 .msg .msg-header {
