@@ -1,126 +1,143 @@
 
-const chatDisplay = document.getElementById('chatDisplay');
-const messageInput = document.getElementById('messageInput');
+window.onload = () => {
+  const chat = document.getElementById("chat");
+  const replyBox = document.getElementById("replyBox");
+  const replyText = document.getElementById("replyText");
+  const messageInput = document.getElementById("messageInput");
+  const fileInput = document.getElementById("fileInput");
 
-const scheme = (location.protocol === 'https:') ? 'wss' : 'ws';
-const ws = new WebSocket(`${scheme}://${location.host}/ws`);
-
-ws.addEventListener('open', () => {
-  console.log('WebSocket connected');
-  // tell server we're ready to receive history to avoid a race
-  ws.send(JSON.stringify({ type: 'ready' }));
-});
-
-ws.addEventListener('message', (ev) => {
-  try {
-    const data = JSON.parse(ev.data);
-    if (data.type === 'history' && Array.isArray(data.posts)) {
-      data.posts.forEach(appendMessage);
-    } else if (data.type === 'message' && data.post) {
-      appendMessage(data.post);
-    }
-    chatDisplay.scrollTop = chatDisplay.scrollHeight;
-  } catch (err) {
-    console.error('Invalid ws message', err);
+  if (!chat || !fileInput || !messageInput || !replyBox || !replyText) {
+    console.error("DOM missing");
+    return;
   }
-});
 
-function appendMessage(m) {
-  const div = document.createElement('div');
-  // If message looks like an uploaded image URL, render image preview
-  const isImage = typeof m.message === 'string' && (m.message.startsWith('/uploads/') || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(m.message));
-  if (m.author === 'J') {
-    if (isImage) {
-      div.innerHTML = `<b style=\"color: #8A0082\">${m.author}:</b> `;
-      const img = document.createElement('img');
-      img.src = m.message;
-      img.className = 'chat-image';
-      div.appendChild(img);
-    } else {
-      div.innerHTML = `<b style=\"color: #8A0082\">${m.author}:</b> ${m.message}`;
-    }
-  } else if (m.author === 'A') {
-    if (isImage) {
-      div.innerHTML = `<b style=\"color: gold\">${m.author}:</b> `;
-      const img = document.createElement('img');
-      img.src = m.message;
-      img.className = 'chat-image';
-      div.appendChild(img);
-    } else {
-      div.innerHTML = `<b style=\"color: gold\">${m.author}:</b> ${m.message}`;
-    }
-  } else {
-    if (isImage) {
-      div.innerHTML = `<b>${m.author}:</b> `;
-      const img = document.createElement('img');
-      img.src = m.message;
-      img.className = 'chat-image';
-      div.appendChild(img);
-    } else {
-      div.innerHTML = `<b>${m.author}:</b> ${m.message}`;
-    }
+  // Get WebSocket URL from current location
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}/ws`;
+  const ws = new WebSocket(wsUrl);
+
+  let replyTo = null;
+  let replyToId = null;
+  let pendingFile = null;
+  const user = /iphone/i.test(navigator.userAgent) ? "J" : "A";
+  let inactivityTimer = null;
+  const messageMap = {}; // Store messages by ID for replies
+
+  // Inactivity timeout - redirect to / after 30 seconds
+  function resetInactivityTimer() {
+    clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      window.location.href = "/";
+    }, 30000); // 30 seconds
   }
-  chatDisplay.appendChild(div);
-}
 
-function sendMessage() {
-  console.log("d")
-  const text = messageInput.value.trim();
-  const isIphone = /iPhone/i.test(navigator.userAgent);
-  const user = isIphone ? 'J' : 'A';
+  // Track user activity
+  document.addEventListener("keydown", resetInactivityTimer);
+  document.addEventListener("click", resetInactivityTimer);
+  fileInput.addEventListener("change", resetInactivityTimer);
 
-  if (!text || ws.readyState !== WebSocket.OPEN) return;
+  // Initialize inactivity timer
+  resetInactivityTimer();
 
-  ws.send(JSON.stringify({ user, text }));
-  messageInput.value = '';
-}
-
-let inactivityTimer;
-
-function resetTimer() {
-  clearTimeout(inactivityTimer);
-  inactivityTimer = setTimeout(() => {
-    window.location.href = '/';
-  }, 30000); // 30 seconds
-}
-
-// reset on any interaction
-['mousemove', 'keydown', 'scroll', 'touchstart'].forEach(evt => {
-  document.addEventListener(evt, resetTimer);
-});
-
-resetTimer(); // start timer
-
-document.getElementById('imageUploader').addEventListener('change', function () {
-    uploadImage();
-});
-
-function uploadImage() {
-    const fileInput = document.getElementById('imageUploader');
-    const file = fileInput.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append('imageFile', file);
-
-    fetch('/api/upload-image', {
-        method: 'POST',
-        body: formData
-    })
+  // Load previous messages on page load
+  fetch("/messages")
     .then(res => res.json())
-    .then(data => {
-    console.log('Upload successful:', data);
-    if (data && data.status === 'success' && data.file) {
-      const isIphone = /iPhone/i.test(navigator.userAgent);
-      const user = isIphone ? 'J' : 'A';
-      const imageUrl = '/uploads/' + data.file;
-      // send as chat message via websocket so it gets saved and broadcast
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ user, text: imageUrl }));
+    .then(messages => {
+      if (messages && Array.isArray(messages)) {
+        messages.forEach(msg => render(msg));
+      }
+    })
+    .catch(err => console.error("Failed to load messages:", err));
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    render(msg);
+  };
+
+  function render(m) {
+    const div = document.createElement("div");
+    div.className = `msg ${m.from}`;
+
+    // Store message for reply lookups - include fileUrl if present
+    messageMap[m.id] = { text: m.text || "(file)", fileUrl: m.fileUrl };
+
+    let html = "";
+    if (m.replyToId) {
+      const repliedTo = messageMap[m.replyToId];
+      if (repliedTo && repliedTo.fileUrl) {
+        html += `<small style='opacity:.6;'>Replying to image:</small><br><img src='${repliedTo.fileUrl}' style='max-width:100px;max-height:100px;border-radius:4px;margin-bottom:8px;'>`;
+      } else {
+        html += `<small style='opacity:.6'>Replying to: ${repliedTo?.text || m.replyToId}</small><br>`;
       }
     }
-    })
-    .catch(err => {
-        console.error('Upload failed:', err);
-    });
-}
+    if (m.text) html += `<strong style='font-weight:600;'>${m.from}:</strong> ${m.text}`;
+    if (m.fileUrl) html += `<br><img src='${m.fileUrl}' style='max-width:200px;border-radius:6px;'>`;
+
+    div.innerHTML = html;
+    div.onclick = () => startReply(m.id, m.text, m.fileUrl);
+
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function startReply(msgId, content, fileUrl) {
+    replyToId = msgId;
+    replyTo = content || "(file)";
+    replyBox.style.display = "block";
+    
+    if (fileUrl) {
+      replyText.innerHTML = `Replying to image:<br><img src='${fileUrl}' style='max-width:100px;max-height:100px;border-radius:4px;'>`;
+    } else {
+      replyText.innerText = "Replying to: " + replyTo;
+    }
+  }
+
+  window.sendMessage = () => {
+    const text = messageInput.value.trim();
+    if (!text && !pendingFile) return;
+
+    const msg = {
+      from: user,
+      text: text,
+      fileUrl: pendingFile,
+      replyToId: replyToId,
+      tag: user
+    };
+
+    ws.send(JSON.stringify(msg));
+
+    messageInput.value = "";
+    replyTo = null;
+    replyToId = null;
+    replyBox.style.display = "none";
+    pendingFile = null;
+    messagePreview.innerHTML = "";
+  };
+
+  document.getElementById("cancelReplyBtn").onclick = () => {
+    replyTo = null;
+    replyToId = null;
+    replyBox.style.display = "none";
+  };
+
+  const messagePreview = document.createElement("div");
+  messagePreview.id = "messagePreview";
+  messagePreview.style.cssText = "margin: 5px 10px; padding: 5px; border-radius: 6px; background: #44475a;";
+  document.getElementById("inputBar").insertBefore(messagePreview, document.getElementById("inputBar").firstChild);
+
+  fileInput.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const form = new FormData();
+    form.append("file", file);
+
+    const res = await fetch("/upload", { method: "POST", body: form });
+    const data = await res.json();
+
+    pendingFile = data.url;
+    
+    // Show preview in input box area
+    messagePreview.innerHTML = `<img src='${pendingFile}' style='max-width:150px;max-height:150px;border-radius:6px;'>`;
+  };
+};

@@ -1,145 +1,103 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
+	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
-// Message envelope used over websocket
-type wsEnvelope struct {
-	Type  string        `json:"type"`
-	Post  *ChatMessage  `json:"post,omitempty"`
-	Posts []ChatMessage `json:"posts,omitempty"`
+type Message struct {
+	ID        string `json:"id"`
+	From      string `json:"from"`
+	Text      string `json:"text"`
+	FileURL   string `json:"fileUrl"`
+	ReplyToID string `json:"replyToId"`
 }
+
+var clients = make(map[*websocket.Conn]string) // conn → username (A or J)
+var clientsMu sync.Mutex
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// Hub maintains active connections and broadcasts messages.
-type Hub struct {
-	// Registered connections.
-	conns map[*websocket.Conn]bool
-	// Inbound messages from the connections.
-	broadcast chan wsEnvelope
-	// Register requests from the connections.
-	register chan *websocket.Conn
-	// Unregister requests from connections.
-	unregister chan *websocket.Conn
-}
-
-var hub = Hub{
-	conns:      make(map[*websocket.Conn]bool),
-	broadcast:  make(chan wsEnvelope),
-	register:   make(chan *websocket.Conn),
-	unregister: make(chan *websocket.Conn),
-}
-
-func (h *Hub) run() {
-	for {
-		select {
-		case c := <-h.register:
-			h.conns[c] = true
-		case c := <-h.unregister:
-			if _, ok := h.conns[c]; ok {
-				delete(h.conns, c)
-				c.Close()
-			}
-		case msg := <-h.broadcast:
-			// broadcast to all conns
-			b, err := json.Marshal(msg)
-			if err != nil {
-				log.Printf("failed to marshal broadcast: %v", err)
-				continue
-			}
-			for c := range h.conns {
-				c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				if err := c.WriteMessage(websocket.TextMessage, b); err != nil {
-					log.Printf("write to conn failed: %v", err)
-					c.Close()
-					delete(h.conns, c)
-				}
-			}
-		}
+// Detect device → user
+func detectUser(r *http.Request) string {
+	ua := strings.ToLower(r.UserAgent())
+	if strings.Contains(ua, "iphone") {
+		return "J"
 	}
+	return "A"
 }
 
-// ServeWs upgrades HTTP connection and registers it with the hub.
-func WsHandler(w http.ResponseWriter, r *http.Request) {
+// Generate unique ID
+func generateID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func HandleWS(w http.ResponseWriter, r *http.Request) { // Broadcast to all clients
+	// Upgrade to WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("websocket upgrade error: %v", err)
+		log.Println("WebSocket upgrade error:", err)
 		return
 	}
 
-	// Register connection
-	hub.register <- conn
+	user := detectUser(r)
 
-	// Start reader loop for this connection (blocking until error)
+	clientsMu.Lock()
+	clients[conn] = user
+	clientsMu.Unlock()
+
 	for {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
-			// assume closed
-			hub.unregister <- conn
-			return
+			break
 		}
 
-		// Expect incoming JSON. It can be either:
-		// { "type": "ready" }  => client is ready to receive history
-		// OR { "user": "A", "text": "hello" } => chat message
-		var incoming struct {
-			Type string `json:"type"`
-			User string `json:"user"`
-			Text string `json:"text"`
-		}
-		if err := json.Unmarshal(data, &incoming); err != nil {
-			log.Printf("invalid ws message: %v", err)
+		// Parse message and save to database
+		var msg Message
+		if err := json.Unmarshal(data, &msg); err != nil {
+			log.Println("Error parsing message:", err)
 			continue
 		}
 
-		// If client signals ready, send history to only this connection
-		if incoming.Type == "ready" {
-			msgs, err := GetAllChatMessages()
-			if err != nil {
-				log.Printf("error fetching history for ws: %v", err)
-				continue
-			}
-			env := wsEnvelope{Type: "history", Posts: msgs}
-			b, err := json.Marshal(env)
-			if err != nil {
-				log.Printf("failed to marshal history envelope: %v", err)
-				continue
-			}
-			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if err := conn.WriteMessage(websocket.TextMessage, b); err != nil {
-				log.Printf("failed to write history to conn: %v", err)
-				hub.unregister <- conn
-				return
-			}
-			log.Printf("sent history (%d messages) to client %v", len(msgs), conn.RemoteAddr())
+		// Generate unique ID if not provided
+		if msg.ID == "" {
+			msg.ID = generateID()
+		}
+
+		// Save to SQLite
+		if err := SaveMessage(&msg); err != nil {
+			log.Println("Error saving message to database:", err)
 			continue
 		}
 
-		if incoming.Text == "" {
-			continue
-		}
+		// Re-marshal with the ID for broadcasting
+		data, _ = json.Marshal(msg)
 
-		// Save to DB and broadcast the saved message
-		saved, err := SaveChatMessage(incoming.Text, incoming.User)
-		if err != nil {
-			log.Printf("error saving message from ws: %v", err)
-			continue
-		}
-
-		env := wsEnvelope{Type: "message", Post: &saved}
-		hub.broadcast <- env
+		// Forward message to both users
+		broadcast(data)
 	}
-}
 
-func init() {
-	go hub.run()
+	clientsMu.Lock()
+	delete(clients, conn)
+	clientsMu.Unlock()
+	conn.Close()
+}
+func broadcast(data []byte) {
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+
+	for c := range clients {
+		c.WriteMessage(websocket.TextMessage, data)
+	}
 }

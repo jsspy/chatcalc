@@ -1,54 +1,48 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"time"
+	"path/filepath"
 )
 
-func UploadImageHandler(w http.ResponseWriter, r *http.Request) {
-	// Limit request size (optional but recommended)
-	r.Body = http.MaxBytesReader(w, r.Body, 10<<20) // 10MB max
-
-	// Parse multipart form
-	err := r.ParseMultipartForm(20 << 20) // 20MB
-	if err != nil {
-		http.Error(w, "Error parsing form: "+err.Error(), http.StatusBadRequest)
+func HandleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Retrieve the file (the key must match: formData.append("imageFile", file))
-	file, fileHeader, err := r.FormFile("imageFile")
+	err := r.ParseMultipartForm(50 << 20) // 50MB
 	if err != nil {
-		http.Error(w, "Could not get file: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "parse error", 500)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "file error", 500)
 		return
 	}
 	defer file.Close()
 
-	// OPTIONAL: generate a random file name
-	filename := fmt.Sprintf("%d_%s", time.Now().UnixNano(), fileHeader.Filename)
+	os.MkdirAll("uploads", 0755)
+	filename := fmt.Sprintf("%d_%s", os.Getpid(), header.Filename)
+	filepath := filepath.Join("uploads", filename)
 
-	// Make sure uploads folder exists
-	os.MkdirAll("./uploads", 0755)
-
-	// Create the destination file
-	dst, err := os.Create("./uploads/" + filename)
+	out, err := os.Create(filepath)
 	if err != nil {
-		http.Error(w, "Could not save file: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "save error", 500)
 		return
 	}
-	defer dst.Close()
+	defer out.Close()
 
-	// Copy uploaded file to destination
-	_, err = io.Copy(dst, file)
-	if err != nil {
-		http.Error(w, "Could not write file: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	io.Copy(out, file)
 
-	// Response (JSON)
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"success", "file":"%s"}`, filename)
+	url := "/uploads/" + filename
+
+	resp := map[string]string{"url": url}
+	json.NewEncoder(w).Encode(resp)
 }

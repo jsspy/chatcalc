@@ -3,26 +3,40 @@ package main
 import (
 	handlers "calc/backend"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
+	// Initialize database
+	if err := handlers.InitDB("./chat.db"); err != nil {
+		log.Fatalf("Failed to initialize database: %v\n", err)
+	}
+	defer handlers.CloseDB()
 
-	handlers.InitDB()
+	// Static file server for uploads
+	http.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("uploads"))))
 
-	mux := http.NewServeMux()
+	// Endpoints
+	http.Handle("/", http.FileServer(http.Dir("./frontend/")))
+	http.HandleFunc("/ws", handlers.HandleWS)
+	http.HandleFunc("/upload", handlers.HandleUpload)
+	http.HandleFunc("/messages", handlers.HandleGetMessages)
 
-	mux.HandleFunc("/", handlers.HomeHandler)
-	mux.HandleFunc("/chat", handlers.ChatHandler)
-	mux.HandleFunc("/ws", handlers.WsHandler)
-	mux.HandleFunc("/api/upload-image", handlers.UploadImageHandler)
+	fmt.Println("Listening on http://localhost:8080/chat.html")
 
-	// Serve frontend static files
-	mux.HandleFunc("/static/", handlers.StaticHandler)
+	// Handle graceful shutdown
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		fmt.Println("\nShutting down...")
+		handlers.CloseDB()
+		os.Exit(0)
+	}()
 
-	// Serve uploaded files from ./uploads at /uploads/
-	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
-
-	fmt.Println("Started http://localhost:8080")
-	http.ListenAndServe(":8080", mux)
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
