@@ -9,6 +9,18 @@ body {
     height: 100vh;
 }
 
+/* Prevent text size adjustments and allow manipulation touch action
+   Also ensure inputs don't trigger iOS zoom by using >=16px font-size */
+html, body {
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    touch-action: manipulation;
+}
+
+input, textarea, button {
+    font-size: 16px; /* iOS Safari won't auto-zoom when inputs are >=16px */
+}
+
 #chat {
     flex: 1;
     overflow-y: auto;

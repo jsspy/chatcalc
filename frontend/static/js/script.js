@@ -36,6 +36,18 @@ window.onload = () => {
   document.addEventListener("click", resetInactivityTimer);
   fileInput.addEventListener("change", resetInactivityTimer);
 
+  // Prevent double-tap zoom on iOS as a fallback: block quick successive taps
+  // We use a non-passive listener so we can call preventDefault()
+  let lastTouch = 0;
+  document.addEventListener('touchend', function (e) {
+    const now = Date.now();
+    if (now - lastTouch <= 300) {
+      // Prevent second tap from triggering native zoom
+      e.preventDefault();
+    }
+    lastTouch = now;
+  }, { passive: false });
+
   // Initialize inactivity timer
   resetInactivityTimer();
 
